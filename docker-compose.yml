@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: teamavail-app
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./output:/app/output
+      - ./input:/app/input
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=teamavail
+      - DB_USER=teamavail
+      - DB_PASSWORD=teamavail_password
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: teamavail-postgres
+    environment:
+      POSTGRES_DB: teamavail
+      POSTGRES_USER: teamavail
+      POSTGRES_PASSWORD: teamavail_password
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+volumes:
+  postgres_data:
