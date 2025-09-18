@@ -142,3 +142,14 @@ The application includes comprehensive tests:
 - Added comprehensive dev dependencies: ESLint, Prettier, Jest, Supertest, Nodemon
 - Created proper configuration files (`.eslintrc.js`, `.prettierrc`)
 - Set up Jest configuration for testing with coverage
+
+### 4. **ESLint Browser Globals Error**
+
+**Problem:**  
+When running linting, ESLint reported errors like `'document' is not defined` in `script.js`. This happened because ESLint, by default, assumes a Node.js environment and does not recognize browser-specific globals such as `document` and `window`.
+
+**Solution:**  
+Added the following directive at the top of `script.js` to tell ESLint that this file runs in a browser environment:
+
+```js
+/* eslint-env browser */
