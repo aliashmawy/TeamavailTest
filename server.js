@@ -16,7 +16,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/input', express.static(path.join(__dirname, 'input')));
 
 // Serve output folder (for history.json)
-app.use('/output', express.static(path.join(__dirname, 'output')));
+//app.use('/output', express.static(path.join(__dirname, 'output')));
 
 // API to save history data
 app.post('/save-history', async (req, res) => {

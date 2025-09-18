@@ -1,29 +1,20 @@
-# Multi-stage build
-# Stage 1: Build stage
-FROM node:18-alpine AS builder
+FROM node:18-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install && npm cache clean --force
+RUN npm ci --only=production && npm cache clean --force
 
 COPY . .
 
+# No need for output dir anymore
+# RUN mkdir -p output
 
-# Stage 2: Production stage
-FROM node:18-alpine AS production
-
-WORKDIR /app
-
-COPY package*.json ./
-
-RUN npm install --only=production && npm cache clean --force
-
-COPY --from=builder /app .
-
-RUN mkdir -p output
-
+# Run as non-root for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+USER nodejs
 
 EXPOSE 3000
 
