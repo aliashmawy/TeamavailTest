@@ -80,19 +80,44 @@ function renderTable() {
   });
 }
 
+// Helper function to transform database rows into the expected format
+function transformHistoryData(dbRows) {
+  // If no history exists, return empty object
+  if (!dbRows || dbRows.length === 0) {
+    return {};
+  }
+
+  // Get the most recent history entry
+  // Since rows are ordered by created_at DESC, the first row is the most recent
+  const latestEntry = dbRows[0];
+
+  // The data field contains our JSON object
+  return latestEntry.data;
+}
+
 async function loadData() {
-  const namesRes = await fetch('/input/names.json');
-  const weeksRes = await fetch('/input/selection.json');
-  const statusRes = await fetch('/input/status.json');
-  const historyRes = await fetch('/output/history.json');
-
-  namesData = await namesRes.json();
-  weeksData = await weeksRes.json();
-  statusesData = await statusRes.json();
-
   try {
-    historyData = await historyRes.json();
-  } catch {
+    // Load static data
+    const namesRes = await fetch('/input/names.json');
+    const weeksRes = await fetch('/input/selection.json');
+    const statusRes = await fetch('/input/status.json');
+
+    namesData = await namesRes.json();
+    weeksData = await weeksRes.json();
+    statusesData = await statusRes.json();
+
+    // Load history from database API instead of file
+    const historyRes = await fetch('/history');
+
+    if (historyRes.ok) {
+      const dbHistory = await historyRes.json();
+      historyData = transformHistoryData(dbHistory);
+    } else {
+      console.warn('Could not load history from database, starting fresh');
+      historyData = {};
+    }
+  } catch (error) {
+    console.error('Error loading data:', error);
     historyData = {};
   }
 
@@ -115,31 +140,36 @@ async function loadData() {
 document.addEventListener('DOMContentLoaded', loadData);
 
 document.getElementById('saveBtn').addEventListener('click', async () => {
-  const rows = document.querySelectorAll('#tableBody tr');
+  try {
+    const rows = document.querySelectorAll('#tableBody tr');
 
-  rows.forEach((row) => {
-    const empId = row.dataset.empId;
-    const week = row.querySelector('.week-select').value;
-    const days = {};
-    row.querySelectorAll('.status-select').forEach((sel) => {
-      days[sel.dataset.day] = sel.value;
+    rows.forEach((row) => {
+      const empId = row.dataset.empId;
+      const week = row.querySelector('.week-select').value;
+      const days = {};
+      row.querySelectorAll('.status-select').forEach((sel) => {
+        days[sel.dataset.day] = sel.value;
+      });
+
+      if (!historyData[empId]) {
+        historyData[empId] = {};
+      }
+      historyData[empId][week] = days;
     });
 
-    if (!historyData[empId]) {
-      historyData[empId] = {};
+    const response = await fetch('/save-history', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(historyData),
+    });
+
+    if (response.ok) {
+      alert('History saved successfully to database.');
+    } else {
+      alert('Error saving history to database.');
     }
-    historyData[empId][week] = days;
-  });
-
-  const response = await fetch('/save-history', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(historyData, null, 2),
-  });
-
-  if (response.ok) {
-    alert('History saved successfully.');
-  } else {
-    alert('Error saving history.');
+  } catch (error) {
+    console.error('Error saving history:', error);
+    alert('Error saving history to database.');
   }
 });

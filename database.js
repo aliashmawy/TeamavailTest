@@ -71,6 +71,3 @@ module.exports = {
   saveHistory,
   getHistory,
 };
-
-
-

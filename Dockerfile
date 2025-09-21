@@ -1,3 +1,4 @@
+#Used 
 FROM node:18-alpine
 
 WORKDIR /app
@@ -8,13 +9,10 @@ RUN npm ci --only=production && npm cache clean --force
 
 COPY . .
 
-# No need for output dir anymore
-# RUN mkdir -p output
+RUN chown -R node:node /app
 
-# Run as non-root for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-USER nodejs
+#used non-root user for security
+USER node
 
 EXPOSE 3000
 

@@ -153,3 +153,4 @@ Added the following directive at the top of `script.js` to tell ESLint that this
 
 ```js
 /* eslint-env browser */
+```
