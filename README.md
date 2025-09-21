@@ -2,155 +2,169 @@
 
 A Node.js Express application for team availability management with a complete CI/CD pipeline using Docker.
 
-### Prerequisites
+---
+
+## Prerequisites
 
 - Node.js (v18 or higher)
 - npm (v8 or higher)
 - Docker
 - Docker Compose
 
+### Technologies Used
+
+| Area | Tools |
+| --- | --- |
+| Version Control | Git |
+| Scripting | Bash |
+| Containerization | Docker |
+| CI/CD | Bash script |
+| Code Quality | ESLint, Prettier |
+| Testing | Jest |
+
+---
+
 ### Running the Application
 
 ### Using the CI Script
 
 ```bash
+chmod +x ci.sh
 ./ci.sh
-
 ```
 
-This script will:
+### This script will:
 
 - Check prerequisites (Node.js, npm, Docker, Docker Compose)
 - Install dependencies
-- Check and auto-fix code formatting
+- Check and auto-fix code formatting using prettier
 - Check and auto-fix code quality (linting)
-- Run tests (if test files exist)
+- Run tests using jest (if test files exist)
 - Build a Docker image
 - Start the application using Docker Compose
 
-## Project Structure
+---
 
-```
-TeamavailTest/
-├── server.js              # Main Express server
-├── database.js            # PostgreSQL database configuration
-├── package.json           # Dependencies and scripts
-├── Dockerfile             # Docker image configuration
-├── docker-compose.yml     # Docker Compose configuration
-├── ci.sh                  # Advanced CI/CD pipeline script
-├── .eslintrc.js          # ESLint configuration
-├── .prettierrc           # Prettier configuration
-├── .gitignore            # Git ignore rules
-├── public/               # Static frontend files
-│   ├── index.html
-│   ├── script.js
-│   └── styles.css
-├── input/                # Input JSON files
-│   ├── names.json
-│   ├── selection.json
-│   └── status.json
-├── output/               # Output directory (legacy)
-└── __tests__/            # Test files
-    └── server.test.js
+## How the pipeline works
 
-```
+### 1. Prerequisite Checks
+
+- Verifies that `node`, `npm`, `docker`, and `docker-compose` are installed.
+- Using `command
+- Stops immediately if any are missing.
+
+### **2. Install Dependencies**
+
+- Runs `npm install` to ensure all required packages are installed.
+
+### **3. Code Formatting Check**
+
+- Runs `npm run format:check` to verify formatting.
+- If issues are found, runs `npm run format` to fix them automatically.
+
+### **4. Code Quality (Linting)**
+
+- Runs `npm run lint` to detect linting issues.
+- If issues are found, attempts auto-fix with `npm run lint:fix`.
+
+### **5. Testing**
+
+- Detects test files (`.test.js` or `.spec.js`).
+- Runs `npm run test` if tests exist.
+- Skips if no tests are found.
+
+### **6. Build Docker Image**
+
+- Builds the application Docker image (`teamavail-test:latest`).
+
+### **7. Start Application**
+
+- Starts services with `docker-compose up -d`.
+- Exposes the app on `http://localhost:3000`.
+- Provides instructions to stop (`docker-compose down`).
 
 ---
 
-## Development
+## Code Explanation
 
-### Code Quality
+### `Dockerfile`
 
-The project uses:
+- Used `node:18-alpine` as my base image and made sure it had all `libs` required, we can use `slim` for future upgrades that requires  some addons or libs that is not in the `alpine` one.
+- Copied only `package.json` before copying the rest of the code to make it layer-cached and to make rebuilds faster if code changes
+- Used `npm ci` to run clean installation and cleared cache because in docker file images we won’t need it unless we repeatedly installed dependencies manually
+- Gave pre-built `node` user permission for the `/app` file only for security best practices
 
-- **ESLint** for code linting
-- **Prettier** for code formatting
-- **Jest** for testing
+### `Docker-Compose`
 
-## Docker
+- Used `postgres:15-alpine` image to be my postgres db
+- Set DB ENVs for the db container and then passed it to the app container
+- Created a `healthcheck` that uses `pg_isready` to make the app container wait until `service_healthy` is fulfilled
+- Created a volume for postgres db default directory `/var/lib/postgresql/data`
+- Created a network for the 2 containers to be able to talk to eachother
 
-### Dockerfile Features
+### `ci.sh`
 
-- Uses Node.js 18 Alpine for smaller image size
-- Multi-stage build for optimization
-- Root user (as requested)
-- Proper layer caching
-
-### Docker Compose
-
-The `docker-compose.yml` includes:
-
-- Application service
-- PostgreSQL service
-- Volume mounts for data persistence
-- Network configuration
-- Optional Redis and PostgreSQL services (commented out)
-
-## Testing
-
-The application includes comprehensive tests:
-
-- **Unit tests** for server endpoints
-- **Integration tests** for API functionality
-
-## Configuration
-
-### Environment Variables
-
-- `NODE_ENV` - Environment (production/development)
-- `PORT` - Server port (default: 3000)
-- `DB_HOST` - Database host (default: postgres)
-- `DB_PORT` - Database port (default: 5432)
-- `DB_NAME` - Database name (default: teamavail)
-- `DB_USER` - Database user (default: teamavail)
-- `DB_PASSWORD` - Database password (default: teamavail_password)
-
-### Docker Configuration
-
-- **Port**: 3000
-- **Volumes**: `./output` and `./input` mounted
-- **User**: Root user (as requested)
+- Started the script with `set -e` to make it exit immediately if any command fails
+- Created a `separator()` function to print clear section headers in the logs, making the output easier to read.
+- Used `command -v` to check if a tool is installed or not by verifying if it’s in `$PATH` or not
+- Installed dependencies using `npm install` so that all required packages are available before building or testing.
+- Checked code formatting with `npm run format:check`. If formatting issues were found, the script automatically fixed them with `npm run format`.
+- Checked code quality using `npm run lint`. If linting issues were found, it attempted to fix them automatically with `npm run lint:fix`.
+- Verified if test files (`.test.js` or `.spec.js`) exist. If they do, the script ran `npm run test` to execute all tests. If no tests are found, this step is skipped.
+- Built the Docker image `teamavail-test:latest` and started the application with `docker-compose up -d` to be in the background.
 
 ---
 
 ## Problems & Solutions
 
-### 1. **CI Script Error Handling**
+### **1. Postgres Database Initialization Delay**
 
-**Problem:** Initial CI script didn't handle errors gracefully and lacked proper status reporting.
+### **Problem:**
 
-**Solution:**
+- When running `docker-compose up`, the application failed to connect to the database with the error:
 
-- Created prerequisite checks before running pipeline steps
+```bash
+Error initializing database: Error: connect ECONNREFUSED 172.21.0.2:5432.
+```
 
-### 2. **PostgreSQL Database Integration**
+### Why:
 
-**Problem:** Application was using file-based storage (history.json) which is not suitable for production and doesn't provide data persistence across container restarts.
+This happened because Postgres was still initializing and not yet ready to accept connections when the app started.
 
-**Solution:**
+### **Solution:**
 
-- Added PostgreSQL database service to docker-compose.yml
-- Created database.js with connection pooling and proper error handling
-- Updated server.js to use database instead of file system
+- Added a **health check** for the Postgres service using `pg_isready`.
+- Configured the application service to depend on the Postgres health status (`depends_on: condition: service_healthy`), ensuring the app only starts once the database is ready.
 
-### 3. **Missing Development Dependencies**
+---
 
-**Problem:** The original `package.json` lacked essential development tools for linting, formatting, and testing.
+### 2. **ESLint Browser Globals Error**
 
-**Solution:**
+### **Problem:**
 
-- Added comprehensive dev dependencies: ESLint, Prettier, Jest, Supertest, Nodemon
-- Created proper configuration files (`.eslintrc.js`, `.prettierrc`)
-- Set up Jest configuration for testing with coverage
+- When running linting, ESLint reported errors like `'document' is not defined` in `script.js`.
 
-### 4. **ESLint Browser Globals Error**
+### Why:
 
-**Problem:**  
-When running linting, ESLint reported errors like `'document' is not defined` in `script.js`. This happened because ESLint, by default, assumes a Node.js environment and does not recognize browser-specific globals such as `document` and `window`.
+- This happened because ESLint, by default, assumes a Node.js environment and does not recognize browser-specific globals such as `document` and `window`.
 
-**Solution:**  
+### **Solution:**
+
 Added the following directive at the top of `script.js` to tell ESLint that this file runs in a browser environment:
 
-```js
+```jsx
 /* eslint-env browser */
+
 ```
+
+---
+
+### 3. **CI Script Error Handling**
+
+### **Problem:**
+
+- Initial CI script didn't handle errors gracefully and lacked proper status reporting.
+
+### **Solution:**
+
+- Created prerequisite checks before running pipeline steps
