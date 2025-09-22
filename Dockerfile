@@ -7,7 +7,7 @@ COPY package*.json ./
 
 RUN npm ci --only=production && npm cache clean --force
 
-COPY . .
+COPY src/ ./src/
 
 RUN chown -R node:node /app
 
