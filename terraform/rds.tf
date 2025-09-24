@@ -29,7 +29,7 @@ resource "aws_vpc_security_group_ingress_rule" "rds_allow_http_ipv4" {
   to_port           = 5432
 }
 
-resource "aws_db_parameter_group" "default" {
+resource "aws_db_parameter_group" "custom_parameter_group" {
   name   = "rds-pg"
   family = "postgres17"
 
@@ -53,11 +53,11 @@ resource "aws_db_instance" "teamavail-db" {
   storage_type         = "gp2"
   engine               = "postgres"
   engine_version       = "17.4"
+  db_name              = "teamavaildb"
   instance_class       = "db.t3.micro"
   username             = "teamavail"
   password             = data.aws_secretsmanager_secret_version.db_password.secret_string
-  db_name = "teamavaildb"
-  parameter_group_name = aws_db_parameter_group.default.name
+  parameter_group_name = aws_db_parameter_group.custom_parameter_group.name
   vpc_security_group_ids = [aws_security_group.rdssecuritygroup.id]
   db_subnet_group_name   = aws_db_subnet_group.wp_rds_subnet_group.name
   skip_final_snapshot  = true

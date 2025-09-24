@@ -4,13 +4,6 @@ A Node.js Express application for team availability management with a complete C
 
 ---
 
-## Prerequisites
-
-- Node.js (v18 or higher)
-- npm (v8 or higher)
-- Docker
-- Docker Compose
-
 ### Technologies Used
 
 | Area | Tools |
@@ -18,15 +11,23 @@ A Node.js Express application for team availability management with a complete C
 | Version Control | Git |
 | Scripting | Bash |
 | Containerization | Docker |
-| CI/CD | Bash script |
+| CI/CD | Bash script, Github Actions |
 | Code Quality | ESLint, Prettier |
 | Testing | Jest |
+| Cloud | AWS |
 
 ---
 
-### Running the Application
+## Running the Application Locally
 
-### Using the CI Script
+### Prerequisites
+
+- Node.js
+- npm
+- Docker
+- Docker Compose
+
+### Run the bash script
 
 ```bash
 chmod +x ci.sh
@@ -45,7 +46,39 @@ chmod +x ci.sh
 
 ---
 
-## How the pipeline works
+## Running the Application on AWS
+
+### Prerequisites
+
+- ECR repo created manually with initial image pushed
+- Terraform Installed
+- Make your own S3 for remote state and change `provider.tf`
+- Save AWS Credentials as `Repository secrets` for github repository
+- Replace your own `envs` in the workflow
+
+### Provisioning Infrastructure
+
+- Initializing terraform working directory and backend
+
+```bash
+cd terraform/
+terraform init
+```
+
+- Provision Infrastructure
+
+```bash
+terraform apply
+```
+
+### Run Workflow
+
+- Workflow runs automatically if there is a change in `src/` , `Dockerfile` , `docker-compose` or `package*.json`
+- Or you can run workflow manually from the GUI by adding the `workflow_dispatch:`
+
+---
+
+## How the local pipeline works
 
 ### 1. Prerequisite Checks
 
@@ -85,7 +118,33 @@ chmod +x ci.sh
 
 ---
 
+## How the Github actions workflow works
+
+### Job 1: Validate Code
+
+- Step 1: Checkout Code
+- Step 2: Setup Node 18 using `setup-node` action
+- Step 3: Install Dependencies using `npm ci`
+- Step 4: Check Code format
+- Step 5: Fix Formatting if Step 4 failed only
+- Step 6: Check Code Quality
+- Step 7: Fix linting issues if Step 6 failed only
+- Step 8: Testing Code
+
+### Job 2: Build, Push and Deploy
+
+- Step 1: Checkout Code
+- Step 2: Access AWS using credentials
+- Step 3: Login to ECR
+- Step 4: Build and push image to ECR
+- Step 5: Scan image with Trivy
+- Step 6: Force Deployment for the ECS Service (If Trivy step was successful)
+
+---
+
 ## Code Explanation
+
+## Local
 
 ### `Dockerfile`
 
@@ -112,6 +171,132 @@ chmod +x ci.sh
 - Checked code quality using `npm run lint`. If linting issues were found, it attempted to fix them automatically with `npm run lint:fix`.
 - Verified if test files (`.test.js` or `.spec.js`) exist. If they do, the script ran `npm run test` to execute all tests. If no tests are found, this step is skipped.
 - Built the Docker image `teamavail-test:latest` and started the application with `docker-compose up -d` to be in the background.
+
+## Terraform and Workflow
+
+### `ecs.tf`
+
+- Created a task execution role for ECS to have permission to pull the private image from ECR
+- Created a role to allow ECS to `GetSecretValue` because RDS DB password was configured using Secrets Manager
+- Configured `DB_PASSWORD` env to fetch its value using Secret ARN
+
+```json
+"secrets": [
+      { "name": "DB_PASSWORD", "valueFrom": "${aws_secretsmanager_secret.db_password.arn}" }
+    ]
+```
+
+- Also added log configuration for the task definition to store logs in a `cloudwatch_log_group`
+
+```json
+"logConfiguration": { 
+            "logDriver": "awslogs",
+            "options": { 
+               "awslogs-group" : "/ecs/${var.project_name}",
+               "awslogs-region": "us-east-1",
+               "awslogs-stream-prefix": "ecs"
+            }
+```
+
+```hcl
+resource "aws_cloudwatch_log_group" "ecs_logs" {
+  name              = "/ecs/${var.project_name}"
+  retention_in_days = 30
+
+  tags = {
+    Name        = "${var.project_name}-logs"
+    Environment = var.environment
+  }
+
+```
+
+- Configured an ALB to span the service’s tasks
+
+```hcl
+load_balancer {
+    target_group_arn = aws_alb_target_group.app.id
+    container_name   = "teamavail-app"
+    container_port   = var.app_port
+  }
+```
+
+### `rds.tf`
+
+- Created a custom parameter group for RDS to fix an issue with SSL being forced
+
+```hcl
+resource "aws_db_parameter_group" "custom_parameter_group" {
+  name   = "rds-pg"
+  family = "postgres17"
+
+  parameter {
+    name  = "rds.force_ssl"
+    value = 0
+  }
+}
+```
+
+- Defined DB password to be fetched from Secrets Manager
+
+```hcl
+  password             = data.aws_secretsmanager_secret_version.db_password.secret_string
+
+```
+
+### `ci,yaml`
+
+- Made Push to be on specific Paths only
+
+```yaml
+on:
+    #triggers only if change is in src/ and only in main or release branch
+    push:
+        branches:
+            - main
+        paths: 
+            - "src/**"
+            - "Dockerfile"
+            - "docker-compose.yml"
+            - "package*.json"
+```
+
+- Used **status check function `failure()` to run a specific step of previous step failed**
+
+```yaml
+- name: Fix formatting
+  if: failure() && steps.format-check.conclusion == 'failure'
+  run: npm run format
+```
+
+- Used Pre-built action to login AWS and ECR
+
+```yaml
+uses: aws-actions/configure-aws-credentials@v5
+#########
+uses: aws-actions/amazon-ecr-login@v2
+```
+
+- Configured Trivy to scan image after push
+
+```yaml
+- name: Run Trivy vulnerability scanner
+          uses: aquasecurity/trivy-action@0.28.0
+          with:
+            image-ref: "${{ steps.login-ecr.outputs.registry }}/${{ env.AWS_ECR_REPO }}:latest"
+            format: 'table'
+            ignore-unfixed: true
+            vuln-type: 'os,library'
+            severity: 'CRITICAL,HIGH'
+```
+
+- Deployed new image using force deployment with AWS CLI, but it’s executed only if all previous steps are successful to ensure new image is pushed and scanned
+
+```yaml
+- name: Force deployment
+          if: success()
+          run: |
+            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
+```
 
 ---
 
@@ -168,3 +353,64 @@ Added the following directive at the top of `script.js` to tell ESLint that this
 ### **Solution:**
 
 - Created prerequisite checks before running pipeline steps
+
+---
+
+### 4. ECS Permission denied
+
+### Problem:
+
+- ECS permission denied to pull the secrets from secret manager
+
+### Solution
+
+- Created a role that allow ECS to `GetSecretValue` from only the specified secret resource using its ARN
+
+---
+
+### 5. RDS Connectivity Issue
+
+### Problem
+
+- Couldn’t connect to RDS because the connection was not encrypted
+
+### Why
+
+- I didn’t use the CA Certificate for RDS in my definition for the DB_HOST
+
+### Not Recommended Solution (For Testing)
+
+- **Not Recommended:** Changed the `rds.force_ssl` from 1 to 0
+
+### Recommended Solution
+
+- Modify database connection config to include SSL
+
+```jsx
+const fs = require('fs');
+
+const dbConfig = {  
+  ssl: { 
+    require: true,
+    rejectUnauthorized: true,
+    ca: fs.readFileSync('/pathto/rds-ca-cert.pem').toString(), 
+  }
+```
+
+- Download the CA Certificate Bundle that matches your RDS instance and place it in project directory
+
+---
+
+### 6. Secret scheduled for deletion
+
+### Problem
+
+- Couldn’t create the same secret with the same name after i deleted it
+
+### Why
+
+- Every Deleted Secret is not automatically deleted but it’s scheduled for deletion for a specific period of time
+
+### Solution
+
+- Used another Secret name

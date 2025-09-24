@@ -21,8 +21,6 @@ env:
 
 
 
-
-
 jobs:
     validate-code:
         runs-on: ubuntu-latest
@@ -35,6 +33,7 @@ jobs:
           with:
             node-version: 18
 
+            
         - name: Install dependencies
           run: npm ci
 
@@ -47,7 +46,6 @@ jobs:
           if: failure() && steps.format-check.conclusion == 'failure'
           run: npm run format
 
-
         - name: Check code quality (linting)
           id: lint-check
           run: npm run lint
@@ -59,6 +57,8 @@ jobs:
 
         - name: " Checking for tests..."
           run: npm run test
+
+
 
     build-push-image:
       runs-on: ubuntu-latest
@@ -74,12 +74,10 @@ jobs:
             aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
             aws-region: us-east-1
 
-
         - name: Login to Amazon ECR
           id: login-ecr
           uses: aws-actions/amazon-ecr-login@v2
           
-
         - name: Build and push the tagged docker image to Amazon ECR
           id: build-image
           env:
@@ -89,8 +87,6 @@ jobs:
           run: |
             docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
             docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-            
-
 
         - name: Run Trivy vulnerability scanner
           uses: aquasecurity/trivy-action@0.28.0
@@ -100,7 +96,6 @@ jobs:
             ignore-unfixed: true
             vuln-type: 'os,library'
             severity: 'CRITICAL,HIGH'
-
         - name: Force deployment
           #A Status Check Function to run step only if all previous steps are successful
           if: success()
