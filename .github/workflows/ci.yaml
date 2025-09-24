@@ -9,6 +9,21 @@ on:
             - "docker-compose.yml"
             - "package*.json"
     workflow_dispatch: 
+
+      
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_ECR_REPO: teamavail
+  ECS_TASK_DEFINITION: terraform/task-definition.json
+  CONTAINER_NAME: teamavail-app
+  ECS_SERVICE: teamavail-service
+  ECS_CLUSTER: teamavail-cluster
+
+
+
+
+
 jobs:
     validate-code:
         runs-on: ubuntu-latest
@@ -21,57 +36,74 @@ jobs:
           with:
             node-version: 18
 
-        - name: Install Dependencies
-          run: |
-            echo "Installing Dependencies"
-            if npm install; then
-              echo "Dependencies installed successfully."
-            else
-              echo "::error::Failed to install dependencies."
-              exit 1
-            fi
+        - name: Install dependencies
+          run: npm ci
 
-        - name: Check Code Formatting
-          run: |
-            echo "Checking Code Formatting"
-            if npm run format:check; then
-              echo "Code formatting is correct."
-            else
-              echo "::warning::Code formatting issues found. Fixing automatically..."
-              if npm run format; then
-                echo "Code formatting fixed successfully."
-              else
-                echo "::error::Failed to fix code formatting."
-                exit 1
-              fi
-            fi
+
+        - name: Check code formatting
+          id: format-check
+          run: npm run format:check
+
+        - name: Fix formatting
+          if: failure() && steps.format-check.conclusion == 'failure'
+          run: npm run format
+
 
         - name: Check code quality (linting)
-          run: |
-            echo " Checking code quality..."
-            if npm run lint; then
-            echo "Code quality check passed."
-            else
-              echo "::warning::Code quality issues found. Fixing automatically..."
-              if npm run lint:fix; then
-                echo "Code quality issues fixed successfully."
-              else
-                echo "::error::Failed to fix code quality issues."
-                exit 1
-              fi
-            fi
+          id: lint-check
+          run: npm run lint
+
+        - name: Fix linting issues
+          # Execute Step only if lint-check step fails
+          if: failure() && steps.lint-check.conclusion == 'failure'
+          run: npm run lint:fix
 
         - name: " Checking for tests..."
+          run: npm run test
+
+    build-push-image:
+      runs-on: ubuntu-latest
+      needs: validate-code
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4    
+          
+        - name: Setup AWS ECR Details
+          uses: aws-actions/configure-aws-credentials@v5
+          with:
+            aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            aws-region: us-east-1
+
+
+        - name: Login to Amazon ECR
+          id: login-ecr
+          uses: aws-actions/amazon-ecr-login@v2
+          
+
+        - name: Build and push the tagged docker image to Amazon ECR
+          id: build-image
+          env:
+            ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+            ECR_REPOSITORY: ${{env.AWS_ECR_REPO}}
+            IMAGE_TAG: "latest"
           run: |
-            echo "Checking for tests"
-            if find . -name "*.test.js" -o -name "*.spec.js" | grep -q .; then
-              echo "Running tests..."
-              if npm run test; then
-                echo " All tests passed."
-              else
-                echo "::error::Tests failed."
-                exit 1
-              fi
-            else
-              echo "::notice::No test files found. Skipping test step."
-            fi
+            docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            
+
+
+        - name: Run Trivy vulnerability scanner
+          uses: aquasecurity/trivy-action@0.28.0
+          with:
+            image-ref: "${{ steps.login-ecr.outputs.registry }}/${{ env.AWS_ECR_REPO }}:latest"
+            format: 'table'
+            ignore-unfixed: true
+            vuln-type: 'os,library'
+            severity: 'CRITICAL,HIGH'
+
+        - name: Force deployment
+          #A Status Check Function to run step only if all previous steps are successful
+          if: success()
+          run: |
+            aws ecs update-service --cluster ${{ env.ECS_CLUSTER }} --service ${{ env.ECS_SERVICE }} --force-new-deployment
