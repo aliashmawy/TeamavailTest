@@ -15,7 +15,6 @@ env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
   AWS_ECR_REPO: teamavail
-  ECS_TASK_DEFINITION: terraform/task-definition.json
   CONTAINER_NAME: teamavail-app
   ECS_SERVICE: teamavail-service
   ECS_CLUSTER: teamavail-cluster

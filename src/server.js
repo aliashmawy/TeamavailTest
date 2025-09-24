@@ -41,7 +41,7 @@ app.get('/history', async (req, res) => {
   }
 });
 
-// Initialize database and start server
+// Initialize database and start  server
 const startServer = async () => {
   try {
     await initDatabase();
