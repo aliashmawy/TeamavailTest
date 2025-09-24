@@ -151,24 +151,20 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 1
   launch_type     = "FARGATE"
-  #used to tag network interface with essential info to output public IP
-  enable_ecs_managed_tags = true
 
   network_configuration {
     subnets          = module.vpc.public_subnets
     security_groups  = [aws_security_group.ecs_tasks.id]
     assign_public_ip = true
   }
+  load_balancer {
+    target_group_arn = aws_alb_target_group.app.id
+    container_name   = "teamavail-app"
+    container_port   = var.app_port
+  }
 
   tags = {
     Name        = "${var.project_name}-ecs-service"
     Environment = var.environment
-  }
-}
-
-data "aws_network_interface" "interface_tags" {
-  filter {
-    name   = "tag:aws:ecs:serviceName"
-    values = ["${lower(var.project_name)}-service"]
   }
 }

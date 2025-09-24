@@ -1,3 +1,3 @@
-output "ECS_TASK_PUBLIC_IP" {
-    value = data.aws_network_interface.interface_tags.association[0].public_ip
+output "loadbalancer_endpoint" {
+  value = aws_alb.main.dns_name
 }
