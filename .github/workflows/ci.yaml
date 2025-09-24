@@ -1,0 +1,77 @@
+on:
+    #triggers only if change is in src/ and only in main or release branch
+    push:
+        branches:
+            - main
+        paths: 
+            - "src/**"
+            - "Dockerfile"
+            - "docker-compose.yml"
+            - "package*.json"
+    workflow_dispatch: 
+jobs:
+    validate-code:
+        runs-on: ubuntu-latest
+        steps:
+
+        - name: checkout
+          uses: actions/checkout@v4
+        - name: setup node
+          uses: actions/setup-node@v5
+          with:
+            node-version: 18
+
+        - name: Install Dependencies
+          run: |
+            echo "Installing Dependencies"
+            if npm install; then
+              echo "Dependencies installed successfully."
+            else
+              echo "::error::Failed to install dependencies."
+              exit 1
+            fi
+
+        - name: Check Code Formatting
+          run: |
+            echo "Checking Code Formatting"
+            if npm run format:check; then
+              echo "Code formatting is correct."
+            else
+              echo "::warning::Code formatting issues found. Fixing automatically..."
+              if npm run format; then
+                echo "Code formatting fixed successfully."
+              else
+                echo "::error::Failed to fix code formatting."
+                exit 1
+              fi
+            fi
+
+        - name: Check code quality (linting)
+          run: |
+            echo " Checking code quality..."
+            if npm run lint; then
+            echo "Code quality check passed."
+            else
+              echo "::warning::Code quality issues found. Fixing automatically..."
+              if npm run lint:fix; then
+                echo "Code quality issues fixed successfully."
+              else
+                echo "::error::Failed to fix code quality issues."
+                exit 1
+              fi
+            fi
+
+        - name: " Checking for tests..."
+          run: |
+            echo "Checking for tests"
+            if find . -name "*.test.js" -o -name "*.spec.js" | grep -q .; then
+              echo "Running tests..."
+              if npm run test; then
+                echo " All tests passed."
+              else
+                echo "::error::Tests failed."
+                exit 1
+              fi
+            else
+              echo "::notice::No test files found. Skipping test step."
+            fi

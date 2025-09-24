@@ -12,3 +12,7 @@ build/
 
 # OS
 .DS_Store
+
+#Terraform
+.terraform.lock.hcl
+.terraform/
