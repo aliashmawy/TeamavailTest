@@ -151,6 +151,8 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = 1
   launch_type     = "FARGATE"
+  #used to tag network interface with essential info to output public IP
+  enable_ecs_managed_tags = true
 
   network_configuration {
     subnets          = module.vpc.public_subnets
@@ -161,5 +163,12 @@ resource "aws_ecs_service" "app" {
   tags = {
     Name        = "${var.project_name}-ecs-service"
     Environment = var.environment
+  }
+}
+
+data "aws_network_interface" "interface_tags" {
+  filter {
+    name   = "tag:aws:ecs:serviceName"
+    values = ["${lower(var.project_name)}-service"]
   }
 }
