@@ -13,7 +13,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
 });
 
-// Initialize database tables
+// Initialize database table
 const initDatabase = async () => {
   try {
     const client = await pool.connect();
